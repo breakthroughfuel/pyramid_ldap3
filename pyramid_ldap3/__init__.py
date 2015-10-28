@@ -225,7 +225,7 @@ class Connector(object):
 
         return result
 
-    def user_groups(self, binding_login, binding_password, userdn):
+    def user_groups(self, userdn):
         """Get the groups the user belongs to.
 
         Given a user DN, return a sequence of LDAP attribute dictionaries
@@ -241,7 +241,7 @@ class Connector(object):
         :exc:`pyramid.exceptions.ConfiguratorError`
 
         """
-        conn = self.manager.connection(binding_login=binding_login, binding_password=binding_password)
+        conn = self.manager.connection()
         search = getattr(self.registry, 'ldap_groups_query', None)
         if search is None:
             raise ConfigurationError(
