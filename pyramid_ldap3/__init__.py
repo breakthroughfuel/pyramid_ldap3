@@ -144,19 +144,27 @@ class ConnectionManager(object):
         return ('uri={uri}, bind={bind}/{passwd},pool={pool_size}'.format(
             **self.__dict__))
 
-    def connection(self, user=None, password=None):
+    def connection(self, user=None, password=None, binding_login=None, binding_password=None):
         if user:
             conn = self.ldap3.Connection(
                 self.server, user=user, password=password,
                 client_strategy=ldap3.STRATEGY_SYNC,
                 auto_bind=True, lazy=False, read_only=True)
         else:
-            conn = self.ldap3.Connection(
-                self.server, user=self.bind, password=self.passwd,
-                client_strategy=self.strategy,
-                pool_name=self.pool_name, pool_size=self.pool_size,
-                pool_lifetime=self.pool_lifetime,
-                auto_bind=True, lazy=False, read_only=True)
+            if binding_login and binding_password:
+                conn = self.ldap3.Connection(
+                    self.server, user=binding_login, password=binding_password,
+                    client_strategy=self.strategy,
+                    pool_name=self.pool_name, pool_size=self.pool_size,
+                    pool_lifetime=self.pool_lifetime,
+                    auto_bind=True, lazy=False, read_only=True)
+            else:
+                conn = self.ldap3.Connection(
+                    self.server, user=self.bind, password=self.passwd,
+                    client_strategy=self.strategy,
+                    pool_name=self.pool_name, pool_size=self.pool_size,
+                    pool_lifetime=self.pool_lifetime,
+                    auto_bind=True, lazy=False, read_only=True)
         return conn
 
 
@@ -167,7 +175,7 @@ class Connector(object):
         self.registry = registry
         self.manager = manager
 
-    def authenticate(self, login, password):
+    def authenticate(self, binding_login, binding_password, user_login, user_password):
         """Validate the given login name and password.
 
         Given a login name and a password, return a tuple of ``(dn,
@@ -189,16 +197,17 @@ class Connector(object):
         :exc:`pyramid.exceptions.ConfiguratorError`.
         """
 
-        if password == '':
+        if user_password == '':
             return None
 
-        conn = self.manager.connection()
+        conn = self.manager.connection(binding_login=binding_login, binding_password=binding_password)
+        # conn = self.manager.connection()
         search = getattr(self.registry, 'ldap_login_query', None)
         if search is None:
             raise ConfigurationError(
                 'ldap_set_login_query was not called during setup')
 
-        result = search.execute(conn, login=login, password=password)
+        result = search.execute(conn, login=user_login)
         conn.unbind()
 
         if not result or len(result) > 1:
@@ -207,16 +216,16 @@ class Connector(object):
         login_dn = result[0]
 
         try:
-            self.manager.connection(login_dn, password).unbind()
+            self.manager.connection(user=login_dn, password=user_password).unbind()
         except ldap3.LDAPException:
             logger.debug(
-                'Exception in authenticate with login %r', login,
+                'Exception in authenticate with login %r', user_login,
                 exc_info=True)
             return None
 
         return result
 
-    def user_groups(self, userdn):
+    def user_groups(self, binding_login, binding_password, userdn):
         """Get the groups the user belongs to.
 
         Given a user DN, return a sequence of LDAP attribute dictionaries
@@ -232,7 +241,7 @@ class Connector(object):
         :exc:`pyramid.exceptions.ConfiguratorError`
 
         """
-        conn = self.manager.connection()
+        conn = self.manager.connection(binding_login=binding_login, binding_password=binding_password)
         search = getattr(self.registry, 'ldap_groups_query', None)
         if search is None:
             raise ConfigurationError(
